@@ -1,9 +1,11 @@
 #!/usr/bin/env python                                                                                                                                   
 # -*- coding:UTF-8 -*-
-         
+
+import re
 import os
 import sys
          
+import chardet
 from PySide import QtCore, QtGui
          
 import const
@@ -17,11 +19,14 @@ class YiReader(QtGui.QMainWindow):
         self.create_menus()
         self.create_toolbars()
         self.create_statusbar()
-         
+
         self.text_viewer = QtGui.QTextEdit()
         self.setCentralWidget(self.text_viewer)
         self.setWindowTitle("YiReader")
-         
+
+        self.filename = None
+        self.coding = None
+
     def create_actions(self):
         """create actions for menus and toolbar"""
         self.open_act = QtGui.QAction(QtGui.QIcon("images/open.png"),
@@ -76,10 +81,6 @@ class YiReader(QtGui.QMainWindow):
  
     def create_statusbar(self):
         """create status bar"""
-        sb = self.statusBar()
-        sb.progress = QtGui.QProgressBar()
-        sb.addPermanentWidget(sb.progress)
-        self.setStatusBar(sb)
         self.statusBar().showMessage("Ready")
          
     def open_book(self):
@@ -88,8 +89,11 @@ class YiReader(QtGui.QMainWindow):
         filepath, filtr = QtGui.QFileDialog.getOpenFileName(self, "Open Book",
             const.DEFAULT_DIR_LINUX, const.FILE_PATTERN)
         self.filename = os.path.normcase(filepath)
-        self.reader = file(filepath, "r")
-        self.text_viewer.setText(self.reader.read())
+        
+        content = file(filepath, "r").read(const.BUFFER_SIZE)
+        self.coding = chardet.detect(content).get("encoding")
+
+        self.text_viewer.setText(content.decode(self.coding))
          
     def close_book(self):
         print "call close_book"
@@ -104,7 +108,30 @@ class YiReader(QtGui.QMainWindow):
         print "call del_bookmark"
          
     def split_book(self):
-        print "call split_book"
+        """split book into chapters"""
+        # if file is opened
+        if self.filename:
+            offset = 0
+            chapters = dict()
+            pattern = re.compile(const.TITLE_PATTERN)
+            
+            with open(self.filename, "r") as f:
+                for line in f:
+                    line = line.decode(self.coding).encode(const.CODING)
+                    match = pattern.match(line)
+                    if match:
+                        title = match.group()
+                        pos = offset + match.start()
+                        chapters[title] = pos
+                        print "Add chapter: {} pos: {}".format(title, pos)
+                    # current file position
+                    offset = f.tell()
+        else:
+            pass
+
+    def create_error_msg(self, msg):
+        """pop up an error msg"""
+        pass
          
     def about(self):
         print "call about"
