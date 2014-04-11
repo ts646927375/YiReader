@@ -28,12 +28,15 @@ class YiReader(QtGui.QMainWindow):
 
         self.setCentralWidget(self.text_viewer)
         self.setWindowTitle("YiReader")
-        self.showMaximized()
+        # maximize window
+        # self.showMaximized()
 
+        self.cursor = None
         self.filename = None
         self.coding = None
-        self.chapters = None
-        self.bookmarks = None
+        self.cur_pos = 0
+        self.chapters = list()
+        self.bookmarks = list()
 
     def create_actions(self):
         """create actions for menus and toolbar"""
@@ -42,9 +45,6 @@ class YiReader(QtGui.QMainWindow):
 
         self.close_act = QtGui.QAction(QtGui.QIcon("images/close.png"),
             "&Close Book", self, triggered = self.close_book)
-
-        self.exit_act = QtGui.QAction(QtGui.QIcon("images/exit.png"),
-            "&Exit", self, triggered = self.exit)
 
         self.add_bookmark_act = QtGui.QAction(QtGui.QIcon("images/add.png"),
             "&Add Bookmark", self, triggered = self.add_bookmark)
@@ -63,8 +63,6 @@ class YiReader(QtGui.QMainWindow):
         self.file_menu = self.menuBar().addMenu("&File")
         self.file_menu.addAction(self.open_act)
         self.file_menu.addAction(self.close_act)
-        self.file_menu.addSeparator()
-        self.file_menu.addAction(self.exit_act)
 
         self.edit_menu = self.menuBar().addMenu("&Edit")
         self.edit_menu.addAction(self.add_bookmark_act)
@@ -80,7 +78,6 @@ class YiReader(QtGui.QMainWindow):
         self.file_toolbar = self.addToolBar("File")
         self.file_toolbar.addAction(self.open_act)
         self.file_toolbar.addAction(self.close_act)
-        self.file_toolbar.addAction(self.exit_act)
 
         self.edit_toolbar = self.addToolBar("Edit")
         self.edit_toolbar.addAction(self.add_bookmark_act)
@@ -96,35 +93,86 @@ class YiReader(QtGui.QMainWindow):
         dock = QtGui.QDockWidget("Chapters", self)
         dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
         self.chapter_list = QtGui.QListWidget(dock)
+        self.chapter_list.itemDoubleClicked.connect(self.item_click)
         dock.setWidget(self.chapter_list)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
         dock = QtGui.QDockWidget("Bookmarks", self)
         dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
         self.bookmark_list = QtGui.QListWidget(dock)
+        self.bookmark_list.itemDoubleClicked.connect(self.item_click)
         dock.setWidget(self.bookmark_list)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+
+    def item_click(self, item):
+        mark = item.text()
+        pos1 = self.bookmarks.get(mark)
+        pos2 = self.chapters.get(mark)
+        if pos1:
+            pos = pos1
+        elif pos2:
+            pos = pos2
+        if pos:
+            cursor = file(self.filename, "r")
+            cursor.seek(pos)
+            content = cursor.read(const.BUFFER_SIZE).decode("GB2312", "ignore")
+            self.text_viewer.setText(content)
+            cursor.close()
+        else:
+            self.create_error_msg(u"Sorry, can not find bookmark/chapter!")
 
     def open_book(self):
         """open a new book from file system"""
         # open an file dialog
-        filepath, filtr = QtGui.QFileDialog.getOpenFileName(self, "Open Book",
-            const.DEFAULT_DIR, const.FILE_PATTERN)
+        filepath, filtr = QtGui.QFileDialog.getOpenFileName(
+            self,
+            "Open Book",
+            const.DEFAULT_DIR,
+            const.FILE_PATTERN
+        )
         self.filename = os.path.normcase(filepath)
 
-        content = file(filepath, "r").read(const.BUFFER_SIZE)
-        self.coding = chardet.detect(content).get("encoding")
+        self.split_book()
+        text_size = self.chapters[self.cur_pos + 1][1] - self.chapters[self.cur_pos][1]
 
+        with open(self.filename, "r") as f:
+            text = f.read()
+            self.coding = chardet.detect(text).get("encoding")
+            self.text_viewer.setText(text.decode(self.coding, "ignore"))
+            f.close()
+
+        self.cursor = file(self.filename, "r")
+        content = self.cursor.read(const.BUFFER_SIZE)
+        self.coding = chardet.detect(content).get("encoding")
         self.text_viewer.setText(content.decode(self.coding, "ignore"))
+        self.cursor.close()
 
     def close_book(self):
-        print "call close_book"
-
-    def exit(self):
-        print "call exit"
+        """close book, clear memory"""
+        if self.filename:
+            self.filename = None
+            self.coding = None
+            self.chapters = dict()
+            self.bookmarks = dict()
+            self.bookmark_list.clear()
+            self.chapter_list.clear()
+            self.text_viewer.setText("")
+        else:
+            self.create_error_msg(u"No book to close!")
 
     def add_bookmark(self):
-        print "call add_bookmark"
+        """add bookmark"""
+        if self.filename:
+            mark, ok = QtGui.QInputDialog.getText(self, u"Please enter a name of this bookmark",
+                u"Bookmark Name", QtGui.QLineEdit.Normal, u"Bookmark1")
+            if ok and mark != "":
+                self.bookmarks[mark] = self.cursor.tell()
+                print mark, self.bookmarks[mark]
+                self.bookmark_list.addItem(mark)
+                self.bookmark_list.sortItems()
+        else:
+            self.create_error_msg(u"No book to mark!")
+
 
     def del_bookmark(self):
         print "call del_bookmark"
@@ -134,23 +182,22 @@ class YiReader(QtGui.QMainWindow):
         # if file is opened
         if self.filename:
             offset = 0
-            chapters = dict()
             pattern = re.compile(const.TITLE_PATTERN)
+            self.chapter_list.clear()
 
             with open(self.filename, "r") as f:
-                for line in f:
+                for line in iter(f.readline, ''):
                     line = line.decode(self.coding, "ignore").strip()
                     match = pattern.match(line)
                     if match:
-                        pos = offset + match.start()
-                        chapters[line] = pos
+                        self.chapters[line] = offset
+                        self.chapter_list.addItem(line)
+                        # print u"add chapter:\t" + line + "\t" + str(offset)
+                    else:
+                        pass
+                        # print u"normal:\t" + line + "\t" + str(offset)
                     # current file position
                     offset = f.tell()
-
-            self.chapters = chapters
-            self.chapter_list.clear()
-            self.chapter_list.addItems(chapters.keys())
-            self.chapter_list.sortItems()
         else:
             # there is no open books
             self.create_error_msg(u"No book to split! \nPlease open a book.")

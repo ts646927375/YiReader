@@ -12,7 +12,7 @@ DEFAULT_DIR = "C:/Users/Shun/Desktop"
 FILE_PATTERN = "Text files (*.txt)"
 
 # buffer size for reading book
-BUFFER_SIZE = 10240
+BUFFER_SIZE = 4096
 
 # system coding
 CODING = "utf-8"
