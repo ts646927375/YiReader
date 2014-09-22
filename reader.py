@@ -16,27 +16,23 @@ class YiReader(QtGui.QMainWindow):
     def __init__(self):
         super(YiReader, self).__init__()
 
+        # 存放书签，章节信息
+        self.book_info = dict()
+        self.file_name = None
+        self.file_coding = None
+        self.position = 0
+
         self.text_viewer = QtGui.QTextEdit()
-        self.bookmark_list = None
-        self.chapter_list = None
+        self.setCentralWidget(self.text_viewer)
+        self.setWindowTitle("YiReader")
 
         self.create_actions()
         self.create_menus()
         self.create_toolbars()
-        self.create_statusbar()
+        # self.create_statusbar()
         self.create_dock_windows()
-
-        self.setCentralWidget(self.text_viewer)
-        self.setWindowTitle("YiReader")
         # maximize window
         # self.showMaximized()
-
-        self.cursor = None
-        self.filename = None
-        self.coding = None
-        self.cur_pos = 0
-        self.chapters = list()
-        self.bookmarks = list()
 
     def create_actions(self):
         """create actions for menus and toolbar"""
@@ -84,16 +80,16 @@ class YiReader(QtGui.QMainWindow):
         self.edit_toolbar.addAction(self.del_bookmark_act)
         self.edit_toolbar.addAction(self.split_book_act)
 
-    def create_statusbar(self):
-        """create status bar"""
-        self.statusBar().showMessage("Ready")
+    # def create_statusbar(self):
+    #     """create status bar"""
+    #     self.statusBar().showMessage("Ready")
 
     def create_dock_windows(self):
         """create dock windows"""
         dock = QtGui.QDockWidget("Chapters", self)
         dock.setAllowedAreas(QtCore.Qt.LeftDockWidgetArea | QtCore.Qt.RightDockWidgetArea)
         self.chapter_list = QtGui.QListWidget(dock)
-        self.chapter_list.itemDoubleClicked.connect(self.item_click)
+        self.chapter_list.itemDoubleClicked.connect(self.chapter_click)
         dock.setWidget(self.chapter_list)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
 
@@ -103,6 +99,15 @@ class YiReader(QtGui.QMainWindow):
         self.bookmark_list.itemDoubleClicked.connect(self.item_click)
         dock.setWidget(self.bookmark_list)
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+
+    def chapter_click(self, item):
+        """找到对应的章节，并展示内容"""
+        index = self.chapter_list.row(item)
+        try:
+            pos = self.book_info["chapters"][index][1]
+            size = self.book_info["chapters"][index + 1][1] - pos
+        except IndexError, e:
+            self.create_error_msg
 
     def item_click(self, item):
         mark = item.text()
